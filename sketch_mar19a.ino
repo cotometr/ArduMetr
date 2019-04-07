@@ -11,13 +11,30 @@ Lipo lipo(14, 21, A0, 33);
 SoftwareSerial SerialBt(3, 4); // 3 - TX 4 - RX
 Mhz19b co2(Serial);
 
+enum Cmd
+{
+  CMD_GET,
+  CMD_CALIBRATE_ON,
+  CMD_CALIBRATE_OFF,
+  CMD_CALIBRATE_ZERO,
+  CMD_NUM
+};
+
+String commands[CMD_NUM];
+
+
 void setup() {
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
+
+  commands[CMD_GET] = "Get\r\n";
+  commands[CMD_CALIBRATE_ON] = "Calibrate1\r\n";
+  commands[CMD_CALIBRATE_OFF] = "Calibrate0\r\n";
+  commands[CMD_CALIBRATE_ZERO] = "CalibrateZero\r\n";
 }
 
-bool is_get_arrived()
+String received_str()
 {
   String received_str;
 
@@ -27,42 +44,78 @@ bool is_get_arrived()
     delay(20);
   }
 
-  if (received_str.length() != 0)
-  {
-    if (received_str[0] == 'G')
-      return true;
-  }
-
-  return false;
+  return received_str;
 }
 
-void loop() 
+bool str_cmp(String in_l, String in_r)
 {
-  if (!is_get_arrived()){
-    return;
+  if (in_l.length() != in_r.length()) {
+    return false;
   }
 
-  int battery_level = lipo.get_level();
+  for (int i = 0; i < in_l.length(); i++) {
+    if (in_l[i] != in_r[i])
+      return false;
+  }
 
-  int ppm_uart = co2.get_co2_uart();
+  return true;
+}
 
-  SerialBt.println(co2.get_log_debug());
-  SerialBt.println(lipo.get_log_debug());
 
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+void loop()
+{
+  delay(50);
+  String str = received_str();
+  if (str.length() == 0)
+    return;
 
-  if (isnan(t) || isnan(h)) {
-    SerialBt.println("Failed to read from DHT");
+  if (str_cmp(str, commands[CMD_GET])){
+    int battery_level = lipo.get_level();
+
+    int ppm_uart = co2.get_co2_uart();
+
+    SerialBt.print(co2.get_log_debug());
+    SerialBt.print(lipo.get_log_debug());
+
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    if (isnan(t) || isnan(h)) {
+      SerialBt.println("Failed to read from DHT");
+    }
+    else {
+      SerialBt.print("Humidity: ");
+      SerialBt.print(h);
+      SerialBt.print(" %, Temperature: ");
+      SerialBt.print(t);
+      SerialBt.print(" Voltage: ");
+      SerialBt.print(battery_level);
+      SerialBt.print("\n");
+    }
+  }
+  else if (str_cmp(str, commands[CMD_CALIBRATE_ON])){
+    co2.set_auto_calibrate(true);
+    SerialBt.println(co2.get_log_debug());
+  }
+  else if (str_cmp(str, commands[CMD_CALIBRATE_OFF])){
+    co2.set_auto_calibrate(false);
+    SerialBt.println(co2.get_log_debug());
+  }
+  else if (str_cmp(str, commands[CMD_CALIBRATE_ZERO])){
+    co2.set_zero_point_calibration();
+    SerialBt.println(co2.get_log_debug());
   }
   else {
-    SerialBt.print("Humidity: ");
-    SerialBt.print(h);
-    SerialBt.print(" %, Temperature: ");
-    SerialBt.print(t);
-    SerialBt.print(" Voltage: ");
-    SerialBt.print(battery_level);
+    SerialBt.println("\n-----------Help-----------");
+    SerialBt.println("Received: |" + str +"|");
 
-    SerialBt.print("C\n");
+    String cmds;
+    for (int i = 0; i < CMD_NUM; i++)
+      cmds += commands[i];
+
+    SerialBt.println("Please use one of the following commands:");
+    SerialBt.print(cmds);
+    SerialBt.println("--------------------------");
   }
 }
+
