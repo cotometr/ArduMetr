@@ -1,7 +1,15 @@
+#include <SPI.h>
+#include "e-ink.h"
+#include "e-ink-display.h"
+#include "imagedata.h"
+#include <epdif.h>
+#include <e-ink.h>
+#include <fonts.h>
+#include <imagedata.h>
 
 #include <lipo.h>
 #include <mhz19b.h>
-#include <SoftwareSerial.h>;
+#include <SoftwareSerial.h>
 #include "DHT.h"
 
 #define DHTPIN 2
@@ -22,12 +30,54 @@ enum Cmd
 
 String commands[CMD_NUM];
 
+#define COLORED     0
+#define UNCOLORED   1
+
+Epd epd;
+uint8_t picture[600];
+Paint paint(picture, 16, 160);
+
+void eink_init()
+{
+  SPI.begin();
+
+  if (epd.Init() != 0) {
+    return;
+  }
+
+  epd.ClearFrame();
+}
+
+bool eink_print(const String& str)
+{
+  int busy = digitalRead(7);
+
+  if (busy == 1) {
+    paint.SetRotate(ROTATE_90);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font12, UNCOLORED);
+    epd.SetPartialWindowRed(paint.GetImage(), 40, 28, paint.GetWidth(), paint.GetHeight());
+    epd.DisplayFrame();
+    return true;
+  }
+  return false;
+}
 
 void setup() {
+  
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
+  delay(10000);
+  SerialBt.println("Start! \n");
+  SerialBt.println( "DC pin = " + String(DC_PIN) + ", CS = " + String(CS_PIN) + ", RS = " + String(RST_PIN) + ", Busy = " + String(BUSY_PIN));
+  if (epd.Init() != 0) {
+    Serial.println("Error!");
+    return;
+  }
 
+  epd.ClearFrame();
+  
   commands[CMD_GET] = "Get\r\n";
   commands[CMD_CALIBRATE_ON] = "Calibrate1\r\n";
   commands[CMD_CALIBRATE_OFF] = "Calibrate0\r\n";
@@ -70,9 +120,14 @@ void loop()
     return;
 
   if (str_cmp(str, commands[CMD_GET])){
-    int battery_level = lipo.get_level();
+    int battery_level, ppm_uart;
+    for (int i = 0; i < 3; i++) {
+      battery_level = lipo.get_level();
+      ppm_uart = co2.get_co2_uart();
 
-    int ppm_uart = co2.get_co2_uart();
+      delay(100);
+    }
+
 
     SerialBt.print(co2.get_log_debug());
     SerialBt.print(lipo.get_log_debug());
@@ -84,12 +139,16 @@ void loop()
       SerialBt.println("Failed to read from DHT");
     }
     else {
+      SerialBt.print("CO2: ");
+      SerialBt.print(ppm_uart);
       SerialBt.print("Humidity: ");
       SerialBt.print(h);
       SerialBt.print(" %, Temperature: ");
       SerialBt.print(t);
       SerialBt.print(" Voltage: ");
       SerialBt.print(battery_level);
+      bool is_printed = eink_print(String("CO2:" + String(ppm_uart) + " t:" + String(t) + " h:" + String(h)));
+      //SerialBt.print("\nPrinting = " + String(is_printed));
       SerialBt.print("\n");
     }
   }
@@ -106,7 +165,7 @@ void loop()
     SerialBt.println(co2.get_log_debug());
   }
   else {
-    SerialBt.println("\n-----------Help-----------");
+    SerialBt.println("\nHelp");
     SerialBt.println("Received: |" + str +"|");
 
     String cmds;
@@ -115,7 +174,6 @@ void loop()
 
     SerialBt.println("Please use one of the following commands:");
     SerialBt.print(cmds);
-    SerialBt.println("--------------------------");
+    SerialBt.println("-");
   }
 }
-
