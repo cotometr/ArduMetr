@@ -19,6 +19,10 @@ Lipo lipo(14, 21, A0, 33);
 SoftwareSerial SerialBt(3, 4); // 3 - TX 4 - RX
 Mhz19b co2(Serial);
 
+
+const int interval = 20000;
+int working_time = 0;
+
 enum Cmd
 {
   CMD_GET,
@@ -48,23 +52,26 @@ void eink_init()
   epd.ClearFrame();
 }
 
-bool eink_print(const String& str)
+bool eink_print(const String& str, bool large_font = false)
 {
   int busy = digitalRead(7);
 
   if (busy == 1) {
     paint.SetRotate(ROTATE_90);
     paint.Clear(COLORED);
-    paint.DrawStringAt(0, 0, str.c_str(), &Font12, UNCOLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), (large_font ? (&Font20) : (&Font12)), UNCOLORED);
     epd.SetPartialWindowRed(paint.GetImage(), 40, 28, paint.GetWidth(), paint.GetHeight());
     epd.DisplayFrame();
     return true;
+  } else
+  {
+    SerialBt.println("Print busy, Str = " + str);
   }
   return false;
 }
 
 void setup() {
-  
+
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
@@ -77,11 +84,13 @@ void setup() {
   }
 
   epd.ClearFrame();
-  
+
   commands[CMD_GET] = "Get\r\n";
   commands[CMD_CALIBRATE_ON] = "Calibrate1\r\n";
   commands[CMD_CALIBRATE_OFF] = "Calibrate0\r\n";
   commands[CMD_CALIBRATE_ZERO] = "CalibrateZero\r\n";
+
+  eink_print("CotoMetr!");
 }
 
 String received_str()
@@ -114,12 +123,20 @@ bool str_cmp(String in_l, String in_r)
 
 void loop()
 {
-  delay(50);
+  SerialBt.println("Loop: work time = " + String(working_time));
+
+  delay(1000);
+  working_time += 1000;
+  SerialBt.println("Loop: after delat time = " + String(working_time));  
   String str = received_str();
+  if (working_time >= interval && str.length() == 0)
+    str = commands[CMD_GET];
+
   if (str.length() == 0)
     return;
 
-  if (str_cmp(str, commands[CMD_GET])){
+  working_time = 0;
+  if (str_cmp(str, commands[CMD_GET])) {
     int battery_level, ppm_uart;
     for (int i = 0; i < 3; i++) {
       battery_level = lipo.get_level();
@@ -152,21 +169,21 @@ void loop()
       SerialBt.print("\n");
     }
   }
-  else if (str_cmp(str, commands[CMD_CALIBRATE_ON])){
+  else if (str_cmp(str, commands[CMD_CALIBRATE_ON])) {
     co2.set_auto_calibrate(true);
     SerialBt.println(co2.get_log_debug());
   }
-  else if (str_cmp(str, commands[CMD_CALIBRATE_OFF])){
+  else if (str_cmp(str, commands[CMD_CALIBRATE_OFF])) {
     co2.set_auto_calibrate(false);
     SerialBt.println(co2.get_log_debug());
   }
-  else if (str_cmp(str, commands[CMD_CALIBRATE_ZERO])){
+  else if (str_cmp(str, commands[CMD_CALIBRATE_ZERO])) {
     co2.set_zero_point_calibration();
     SerialBt.println(co2.get_log_debug());
   }
   else {
     SerialBt.println("\nHelp");
-    SerialBt.println("Received: |" + str +"|");
+    SerialBt.println("Received: |" + str + "|");
 
     String cmds;
     for (int i = 0; i < CMD_NUM; i++)
