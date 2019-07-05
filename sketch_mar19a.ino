@@ -20,8 +20,8 @@ SoftwareSerial SerialBt(3, 4); // 3 - TX 4 - RX
 Mhz19b co2(Serial);
 
 
-const int interval = 20000;
-int working_time = 0;
+const int interval = 10000;
+int working_time = 7000;
 
 enum Cmd
 {
@@ -45,27 +45,75 @@ void eink_init()
 {
   SPI.begin();
 
-  if (epd.Init() != 0) {
+  if (epd.Init(lut_full_update) != 0) {
+    SerialBt.print("e-Paper init failed");
     return;
   }
-
-  epd.ClearFrame();
+  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+  epd.DisplayFrame();
+  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+  epd.DisplayFrame();
+  delay(1000);
+  
+  if (epd.Init(lut_partial_update) != 0) {
+    SerialBt.print("e-Paper init failed");
+    return;
+  }
+  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+  epd.DisplayFrame();
+  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+  epd.DisplayFrame();
+  delay(1000);
 }
 
-bool eink_print(const String& str, bool large_font = false)
+bool eink_print(int co2, float temp, float hum, float battery)
 {
-  int busy = digitalRead(7);
+  int busy = 1;//digitalRead(7);
 
   if (busy == 1) {
-    paint.SetRotate(ROTATE_90);
+    epd.Reset();
+    paint.SetWidth(24);
+    paint.SetHeight(200);
+    paint.SetRotate(ROTATE_270);
     paint.Clear(COLORED);
-    paint.DrawStringAt(0, 0, str.c_str(), (large_font ? (&Font20) : (&Font12)), UNCOLORED);
-    epd.SetPartialWindowRed(paint.GetImage(), 40, 28, paint.GetWidth(), paint.GetHeight());
+    paint.DrawStringAt(60, 0, "Cotometr", &Font24, UNCOLORED);
+    epd.ClearFrameMemory(0xFF);
+    epd.SetFrameMemory(paint.GetImage(),  paint.Size(), 0, 0, paint.GetWidth(), paint.GetHeight());
+
+    String str = "CO2: " + String(co2);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
+    epd.SetFrameMemory(paint.GetImage(), paint.Size(), 48, 0, paint.GetWidth(), paint.GetHeight());
+
+    str = "Temp: " + String(temp);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
+    epd.SetFrameMemory(paint.GetImage(),  paint.Size(), 72, 0, paint.GetWidth(), paint.GetHeight());
+
+    str = "Hum: " + String(hum);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
+    epd.SetFrameMemory(paint.GetImage(),  paint.Size(), 104, 0, paint.GetWidth(), paint.GetHeight());
+
+    str = "V: " + String(battery);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
+    epd.SetFrameMemory(paint.GetImage(), paint.Size(), 136, 0, paint.GetWidth(), paint.GetHeight());
+
+    int time = millis() / 1000;
+    str = "Time: " + String(time);
+    paint.Clear(COLORED);
+    paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
+    
+    epd.SetFrameMemory(paint.GetImage(), paint.Size(), 176, 0, paint.GetWidth(), paint.GetHeight());
+
     epd.DisplayFrame();
+    delay(600);
+    epd.Sleep();
     return true;
   } else
   {
-    SerialBt.println("Print busy, Str = " + str);
+    SerialBt.println("Print busy");
   }
   return false;
 }
@@ -75,30 +123,21 @@ void setup() {
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
-  delay(10000);
-  SerialBt.println("Start! \n");
-  SerialBt.println( "DC pin = " + String(DC_PIN) + ", CS = " + String(CS_PIN) + ", RS = " + String(RST_PIN) + ", Busy = " + String(BUSY_PIN));
-  if (epd.Init() != 0) {
-    Serial.println("Error!");
-    return;
-  }
+  eink_init();
 
-  epd.ClearFrame();
+  SerialBt.println("Start! \n");
 
   commands[CMD_GET] = "Get\r\n";
   commands[CMD_CALIBRATE_ON] = "Calibrate1\r\n";
   commands[CMD_CALIBRATE_OFF] = "Calibrate0\r\n";
   commands[CMD_CALIBRATE_ZERO] = "CalibrateZero\r\n";
-
-  eink_print("CotoMetr!");
 }
 
 String received_str()
 {
   String received_str;
 
-  while (SerialBt.available( )) {
-
+  while (SerialBt.available()) {
     received_str += (char)SerialBt.read();
     delay(20);
   }
@@ -123,11 +162,11 @@ bool str_cmp(String in_l, String in_r)
 
 void loop()
 {
-  SerialBt.println("Loop: work time = " + String(working_time));
+  //SerialBt.println("Loop: work time = " + String(working_time));
 
-  delay(1000);
-  working_time += 1000;
-  SerialBt.println("Loop: after delat time = " + String(working_time));  
+  delay(500);
+  working_time += 500;
+  //SerialBt.println("Loop: after delat time = " + String(working_time));
   String str = received_str();
   if (working_time >= interval && str.length() == 0)
     str = commands[CMD_GET];
@@ -137,9 +176,8 @@ void loop()
 
   working_time = 0;
   if (str_cmp(str, commands[CMD_GET])) {
-    int battery_level, ppm_uart;
+    int ppm_uart;
     for (int i = 0; i < 3; i++) {
-      battery_level = lipo.get_level();
       ppm_uart = co2.get_co2_uart();
 
       delay(100);
@@ -151,7 +189,7 @@ void loop()
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
-
+    float battery = lipo.get_voltage();
     if (isnan(t) || isnan(h)) {
       SerialBt.println("Failed to read from DHT");
     }
@@ -163,8 +201,8 @@ void loop()
       SerialBt.print(" %, Temperature: ");
       SerialBt.print(t);
       SerialBt.print(" Voltage: ");
-      SerialBt.print(battery_level);
-      bool is_printed = eink_print(String("CO2:" + String(ppm_uart) + " t:" + String(t) + " h:" + String(h)));
+      SerialBt.print(battery);
+      bool is_printed = eink_print(ppm_uart, t, h, battery);
       //SerialBt.print("\nPrinting = " + String(is_printed));
       SerialBt.print("\n");
     }
