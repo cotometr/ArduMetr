@@ -1,5 +1,3 @@
-#include <button.h>
-
 #include <SPI.h>
 #include "e-ink.h"
 #include "e-ink-display.h"
@@ -20,13 +18,6 @@ Lipo lipo(14, 21, A0, 33);
 
 SoftwareSerial SerialBt(3, 4); // 3 - TX 4 - RX
 Mhz19b co2(Serial);
-
-const int transistor_pin = 9;
-int transistor_state = LOW;
-const int button_pin = 5;    // the number of the pushbutton pin
-unsigned long debounce_delay = 500;    // the debounce time; increase if the output flickers
-Button button(button_pin, debounce_delay);
-
 
 
 const int interval = 10000;
@@ -63,7 +54,7 @@ void eink_init()
   epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
   epd.DisplayFrame();
   delay(1000);
-
+  
   if (epd.Init(lut_partial_update) != 0) {
     SerialBt.print("e-Paper init failed");
     return;
@@ -113,7 +104,7 @@ bool eink_print(int co2, float temp, float hum, float battery)
     str = "Time: " + String(time);
     paint.Clear(COLORED);
     paint.DrawStringAt(0, 0, str.c_str(), &Font24, UNCOLORED);
-
+    
     epd.SetFrameMemory(paint.GetImage(), paint.Size(), 176, 0, paint.GetWidth(), paint.GetHeight());
 
     epd.DisplayFrame();
@@ -127,34 +118,14 @@ bool eink_print(int co2, float temp, float hum, float battery)
   return false;
 }
 
-void setup_on_button()
-{
+void setup() {
+
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
   eink_init();
 
   SerialBt.println("Start! \n");
-}
-void button_handler(void*)
-{
-  transistor_state = !transistor_state;
-  digitalWrite(transistor_pin, transistor_state);
-  static int inited;
-  if (transistor_state == HIGH && !inited)
-  {
-    inited = 1;
-    setup_on_button();
-  }
-}
-
-void setup() {
-  //button.set_handler(button_handler, NULL);
-
-  pinMode(transistor_pin, OUTPUT);
-  button_handler(NULL);
-  digitalWrite(transistor_pin, transistor_state);
-
 
   commands[CMD_GET] = "Get\r\n";
   commands[CMD_CALIBRATE_ON] = "Calibrate1\r\n";
@@ -192,13 +163,9 @@ bool str_cmp(String in_l, String in_r)
 void loop()
 {
   //SerialBt.println("Loop: work time = " + String(working_time));
-  //button.poll();
-  digitalWrite(transistor_pin, transistor_state);
-  if (transistor_state == LOW)
-    return;
 
-  delay(1);
-  working_time += 1;
+  delay(500);
+  working_time += 500;
   //SerialBt.println("Loop: after delat time = " + String(working_time));
   String str = received_str();
   if (working_time >= interval && str.length() == 0)
