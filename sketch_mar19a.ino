@@ -12,6 +12,7 @@
 #include <SoftwareSerial.h>
 #include "DHT.h"
 
+
 #define DHTPIN 2
 DHT dht(DHTPIN, DHT22);
 Lipo lipo(14, 21, A0, 33);
@@ -54,16 +55,28 @@ void eink_init()
   epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
   epd.DisplayFrame();
   delay(1000);
+
+  epd.ClearFrameMemory(0xFF);
+
+  epd.SetFrameMemory(COTOMETR_LOGO_192_104, 2496, 0, 4, 104, 192, true );
+  epd.SetFrameMemory(CAT_MAIN_88_88, 968, 112, 50, 88, 88, true);
+  epd.DisplayFrame();
+
+//  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+//  epd.DisplayFrame();
+//  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+//  epd.DisplayFrame();
+  delay(5000);
+ 
+  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
+  epd.ClearFrameMemory(0x00);   // bit set = white, bit reset = black
   
   if (epd.Init(lut_partial_update) != 0) {
-    SerialBt.print("e-Paper init failed");
+    Serial.print("e-Paper init failed");
     return;
   }
-  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
-  epd.DisplayFrame();
-  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
-  epd.DisplayFrame();
-  delay(1000);
+
+    epd.ClearFrameMemory(0xFF);
 }
 
 bool eink_print(int co2, float temp, float hum, float battery)
@@ -123,6 +136,9 @@ void setup() {
   Serial.begin(9600);
   dht.begin();
   SerialBt.begin(9600);
+  delay(4000);
+  SerialBt.println("Before display init! \n");
+
   eink_init();
 
   SerialBt.println("Start! \n");
